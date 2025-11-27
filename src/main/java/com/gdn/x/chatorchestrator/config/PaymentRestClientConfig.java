@@ -6,7 +6,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.web.client.RestClient;
 
 @Configuration
-public class RestClientConfig {
+public class PaymentRestClientConfig {
 
   @Bean
   public RestClient paymentRestClient(

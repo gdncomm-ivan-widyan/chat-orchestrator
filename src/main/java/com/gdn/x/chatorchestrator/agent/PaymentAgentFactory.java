@@ -48,36 +48,36 @@ public class PaymentAgentFactory {
         .build();
   }
 
-  @Schema(description = "Get a human-readable payment status for an order")
-  public Map<String, String> getOrderStatus(
-      @Schema(name = "orderId", description = "Customer order ID") String orderId) {
-
-    PaymentOrderStatusResponse resp = paymentClient.checkOrderStatus(orderId);
-
-    String message = "Order %s is currently %s".formatted(
-        resp.getOrderId(),
-        resp.getPaymentStatus()
-    );
-    return Map.of(
-        "orderId", resp.getOrderId(),
-        "status", resp.getPaymentStatus(),
-        "message", message
-    );
-  }
-
-  @Schema(description = "Get payment rule details for a combination of merchant, category, and product")
-  public Map<String, String> getPaymentRuleDetails(
-      @Schema(name = "merchant", description = "Merchant code (can be null)") String merchant,
-      @Schema(name = "category", description = "Category code (can be null)") String category,
-      @Schema(name = "product", description = "Product code (can be null)") String product) {
-
-    String rulesSummary = paymentClient.checkPaymentRule(merchant, category, product);
-
-    return Map.of(
-        "merchant", merchant == null ? "" : merchant,
-        "category", category == null ? "" : category,
-        "product", product == null ? "" : product,
-        "rulesSummary", rulesSummary
-    );
-  }
+//  @Schema(description = "Get a human-readable payment status for an order")
+//  public Map<String, String> getOrderStatus(
+//      @Schema(name = "orderId", description = "Customer order ID") String orderId) {
+//
+//    PaymentOrderStatusResponse resp = paymentClient.checkOrderStatus(orderId);
+//
+//    String message = "Order %s is currently %s".formatted(
+//        resp.getOrderId(),
+//        resp.getPaymentStatus()
+//    );
+//    return Map.of(
+//        "orderId", resp.getOrderId(),
+//        "status", resp.getPaymentStatus(),
+//        "message", message
+//    );
+//  }
+//
+//  @Schema(description = "Get payment rule details for a combination of merchant, category, and product")
+//  public Map<String, String> getPaymentRuleDetails(
+//      @Schema(name = "merchant", description = "Merchant code (can be null)") String merchant,
+//      @Schema(name = "category", description = "Category code (can be null)") String category,
+//      @Schema(name = "product", description = "Product code (can be null)") String product) {
+//
+//    String rulesSummary = paymentClient.checkPaymentRule(merchant, category, product);
+//
+//    return Map.of(
+//        "merchant", merchant == null ? "" : merchant,
+//        "category", category == null ? "" : category,
+//        "product", product == null ? "" : product,
+//        "rulesSummary", rulesSummary
+//    );
+//  }
 }

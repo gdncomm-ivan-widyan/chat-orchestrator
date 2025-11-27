@@ -1,62 +1,43 @@
 package com.gdn.x.chatorchestrator.command.payment;
 
-import com.gdn.x.chatorchestrator.agent.PaymentAgentFactory;
+import com.gdn.x.chatorchestrator.client.payment.PaymentClient;
+import com.gdn.x.chatorchestrator.client.payment.model.PaymentAiAssistantResponse;
+import com.gdn.x.chatorchestrator.client.payment.model.PaymentAiAssistantValue;
 import com.gdn.x.chatorchestrator.command.ChatCommand;
 import com.gdn.x.chatorchestrator.command.ChatResult;
-import com.google.adk.agents.BaseAgent;
-import com.google.adk.agents.RunConfig;
-import com.google.adk.events.Event;
-import com.google.adk.runner.InMemoryRunner;
-import com.google.adk.sessions.Session;
-import com.google.genai.types.Content;
-import com.google.genai.types.Part;
-import io.reactivex.rxjava3.core.Flowable;
 import lombok.RequiredArgsConstructor;
+
+import java.util.Collections;
+import java.util.Optional;
 
 @RequiredArgsConstructor
 public class PaymentChatCommand implements ChatCommand {
 
-  private final PaymentAgentFactory paymentAgentFactory;
+  private final PaymentClient paymentClient;
   private final String prompt;
   private final String userEmail;
   private final String userId;
 
   @Override
   public ChatResult execute() {
-    // 1) Build a fresh payment agent for this command
-    BaseAgent paymentAgent = paymentAgentFactory.buildPaymentAgent();
+    PaymentAiAssistantResponse resp = paymentClient.processPrompt(prompt);
 
-    // 2) Wrap it in an in-memory runner
-    InMemoryRunner runner = new InMemoryRunner(paymentAgent);
+    // Fallback message if something is wrong
+    String message = Optional.ofNullable(resp)
+        .map(PaymentAiAssistantResponse::getValue)
+        .map(PaymentAiAssistantValue::getMessage)
+        .orElse("Payment assistant could not process the request right now.");
 
-    RunConfig runConfig = RunConfig.builder().build();
-
-    // 3) Create or reuse a session for this user
-    Session session = runner
-        .sessionService()
-        .createSession(runner.appName(), userId)
-        .blockingGet();
-
-    // 4) Prepare user message
-    Content userMsg = Content.fromParts(Part.fromText(prompt));
-
-    // 5) Run the agent asynchronously and collect events
-    Flowable<Event> events =
-        runner.runAsync(session.userId(), session.id(), userMsg, runConfig);
-
-    StringBuilder answer = new StringBuilder();
-    events.blockingForEach(event -> {
-      if (event.finalResponse()) {
-        // stringifyContent() gives the aggregated text of the final response
-        answer.append(event.stringifyContent());
-      }
-    });
+    var roleNames = Optional.ofNullable(resp)
+        .map(PaymentAiAssistantResponse::getValue)
+        .map(PaymentAiAssistantValue::getRoleNames)
+        .orElse(Collections.emptyList());
 
     return ChatResult.builder()
-        .message(answer.toString())
+        .message(message)
         .userEmail(userEmail)
         .userId(userId)
-        .roleNames(null) // TODO: populate from your AccessService equivalent
+        .roleNames(roleNames)
         .build();
   }
 }

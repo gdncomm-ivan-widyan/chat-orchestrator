@@ -1,7 +1,7 @@
 package com.gdn.x.chatorchestrator.service;
 
-import com.gdn.x.chatorchestrator.agent.PaymentAgentFactory;
 import com.gdn.x.chatorchestrator.agent.RouterAgentFactory;
+import com.gdn.x.chatorchestrator.client.payment.PaymentClient;
 import com.gdn.x.chatorchestrator.command.ChatCommandExecutor;
 import com.gdn.x.chatorchestrator.command.ChatResult;
 import com.gdn.x.chatorchestrator.command.payment.PaymentChatCommand;
@@ -16,32 +16,30 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class ChatOrchestratorService {
 
-  private final PaymentAgentFactory paymentAgentFactory;
+  private final PaymentClient paymentClient;
   private final RouterAgentFactory routerAgentFactory;
   private final ChatCommandExecutor commandExecutor;
   private final UserContextService userContextService;
 
   public ChatResult handleUserMessage(String message) {
     UserContext ctx = userContextService.getCurrentUserContext();
-
-    RouterAgentFactory.IntentClassification classification =
+    RouterAgentFactory.IntentClassification intent =
         routerAgentFactory.classifyIntent(ctx.getUserId(), message);
 
-    RouterAgentFactory.IntentDomain domain = classification.getDomain();
-    String language = classification.getLanguage(); // for future use
+    RouterAgentFactory.IntentDomain domain = intent.getDomain();
 
-    log.info("RouterAgent classified intent={} language={} for userId={}",
-        domain, language, ctx.getUserId());
+    log.info("RouterAgent classified intent={} for userId={}", domain, ctx.getUserId());
 
     return switch (domain) {
       case PAYMENT -> handlePayment(message, ctx);
-      case PROMO, GENERAL -> handleNotImplemented(message, ctx, domain);
+      case PROMO -> handlePromo(message, ctx); // TODO later
+      case GENERAL -> handleNotImplemented(message, ctx, domain);
     };
   }
 
   private ChatResult handlePayment(String message, UserContext ctx) {
     PaymentChatCommand cmd = new PaymentChatCommand(
-        paymentAgentFactory,
+        paymentClient,
         message,
         ctx.getEmail(),
         ctx.getUserId()
@@ -49,9 +47,21 @@ public class ChatOrchestratorService {
     return commandExecutor.execute(cmd);
   }
 
-  private ChatResult handleNotImplemented(String message,
+  private ChatResult handlePromo(String message, UserContext ctx) {
+    String reply = "[PROMO stub] Promo domain not yet implemented. Original message: " + message;
+    return ChatResult.builder()
+        .message(reply)
+        .userEmail(ctx.getEmail())
+        .userId(ctx.getUserId())
+        .roleNames(ctx.getRoleNames())
+        .build();
+  }
+
+  private ChatResult handleNotImplemented(
+      String message,
       UserContext ctx,
-      RouterAgentFactory.IntentDomain domain) {
+      RouterAgentFactory.IntentDomain domain
+  ) {
     String reply = "[RouterAgent stub] Domain " + domain +
         " is not yet implemented in ChatOrchestrator. Original message: " + message;
     return ChatResult.builder()

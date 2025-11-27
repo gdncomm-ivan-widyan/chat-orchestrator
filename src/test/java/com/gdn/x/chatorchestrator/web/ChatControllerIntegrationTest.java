@@ -1,5 +1,6 @@
 package com.gdn.x.chatorchestrator.web;
 
+import com.gdn.x.chatorchestrator.agent.RouterAgentFactory;
 import com.gdn.x.chatorchestrator.web.dto.ChatRequest;
 import com.gdn.x.chatorchestrator.web.dto.ChatResponse;
 import org.junit.jupiter.api.BeforeEach;
@@ -10,15 +11,15 @@ import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.cloud.contract.wiremock.AutoConfigureWireMock;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
-import static com.github.tomakehurst.wiremock.client.WireMock.get;
-import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
-import static com.github.tomakehurst.wiremock.client.WireMock.stubFor;
-import static com.github.tomakehurst.wiremock.client.WireMock.urlMatching;
+import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.when;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@AutoConfigureWireMock(port = 0)   // Spring starts WireMock on random port, exposed as wiremock.server.port
+@AutoConfigureWireMock(port = 0)
 @ActiveProfiles("test")
 class ChatControllerIntegrationTest {
 
@@ -28,14 +29,30 @@ class ChatControllerIntegrationTest {
   @Autowired
   private TestRestTemplate restTemplate;
 
+  @MockitoBean
+  private RouterAgentFactory routerAgentFactory;
+
   @BeforeEach
-  void setupWiremock() {
-    // No need configureFor(host,port) when using @AutoConfigureWireMock
-    stubFor(get(urlMatching("/internal-api/payment-assistant/orders/.*"))
+  void setup() {
+    // Force router to classify as PAYMENT so we hit the PaymentChatCommand path
+    when(routerAgentFactory.classifyIntent(anyString(), anyString()))
+        .thenReturn(new RouterAgentFactory.IntentClassification(
+            RouterAgentFactory.IntentDomain.PAYMENT,
+            "indonesia"
+        ));
+
+    // Stub payment-service AI assistant endpoint
+    stubFor(post(urlPathEqualTo("/x-payment3/api/ai-assistant/prompt"))
         .willReturn(okJson("""
             {
-              "orderId": "123456",
-              "paymentStatus": "WAITING_PAYMENT"
+              "requestId": "test-request",
+              "errorMessage": null,
+              "errorCode": null,
+              "success": true,
+              "value": {
+                "message": "Order 123456 masih pending karena menunggu pembayaran.",
+                "roleNames": []
+              }
             }
             """)));
   }
@@ -53,6 +70,6 @@ class ChatControllerIntegrationTest {
 
     assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
     assertThat(response.getBody()).isNotNull();
-    assertThat(response.getBody().getMessage()).contains("order");
+    assertThat(response.getBody().getMessage()).contains("Order 123456");
   }
 }
