@@ -10,11 +10,14 @@ import com.google.adk.runner.InMemoryRunner;
 import com.google.adk.sessions.Session;
 import com.google.genai.types.Content;
 import com.google.genai.types.Part;
+import com.google.genai.types.Schema;
 import io.reactivex.rxjava3.core.Flowable;
 import lombok.Getter;
 import lombok.ToString;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+
+import java.util.Map;
 
 @Slf4j
 @Component
@@ -22,31 +25,53 @@ public class RouterAgentFactory {
 
   public enum IntentDomain {
     PAYMENT,
-    SHIPPING,
     PROMO,
-    FRAUD,
     GENERAL
   }
+
+  /**
+   * This describes the JSON we expect from the router LLM:
+   *
+   * {
+   *   "domain": "PAYMENT" | "PROMO" | "GENERAL",
+   *   "language": "indonesia" | "english" | null
+   * }
+   */
+  private static final Schema ROUTER_OUTPUT_SCHEMA =
+      Schema.builder()
+          .type("OBJECT")
+          .description("Routing result for Blibli chat orchestrator.")
+          .properties(
+              Map.of(
+                  "domain",
+                  Schema.builder()
+                      .type("STRING")
+                      .description("Intent domain: PAYMENT, PROMO, or GENERAL.")
+                      .build(),
+                  "language",
+                  Schema.builder()
+                      .type("STRING")
+                      .description("Language of the user prompt, e.g. 'indonesia' or 'english'.")
+                      .build()
+              ))
+          .build();
 
   @Getter
   @ToString
   @JsonIgnoreProperties(ignoreUnknown = true)
   public static class RouterResult {
-    private String domain;   // "PAYMENT" | "SHIPPING" | ...
-    private String action;   // "check_order_status" | "check_payment_rule" | "small_talk" | ...
-    private String language; // "english" | "indonesia"
+    private String domain;   // "PAYMENT" | "PROMO" | "GENERAL"
+    private String language; // "english" | "indonesia" | null
   }
 
   @Getter
   @ToString
   public static class IntentClassification {
     private final IntentDomain domain;
-    private final String action;
-    private final String language;
+    private final String language; // normalized "indonesia"/"english"
 
-    public IntentClassification(IntentDomain domain, String action, String language) {
+    public IntentClassification(IntentDomain domain, String language) {
       this.domain = domain;
-      this.action = action;
       this.language = language;
     }
   }
@@ -60,34 +85,52 @@ public class RouterAgentFactory {
     BaseAgent routerAgent =
         LlmAgent.builder()
             .name("router_agent")
-            .description("Routes Blibli CS prompts to PAYMENT, SHIPPING, PROMO, FRAUD, or GENERAL.")
-            .model("gemini-2.5-flash") // or your configured model
+            .description("Routes Blibli CS prompts to PAYMENT or PROMO domains.")
+            .model("gemini-2.5-flash")
             .instruction(
                 """
                 You are a routing agent for Blibli internal tools.
 
+                Supported domains:
+                - PAYMENT: questions about payment, order payment status, error codes, etc.
+                - PROMO: questions about promos, vouchers, coupons, discounts.
+                - GENERAL: anything else that is not payment or promo.
+
+                Examples of PAYMENT questions:
+                - "cek status order", "kenapa order id ini gagal"
+                - "apakah order dilakukan pembayaran / terdebit beberapa kali"
+                - "apakah order kartu kredit pakai poin / berapa poin yang digunakan pada order ini?"
+                - "kenapa user tidak bisa menggunakan payment tertentu"
+                - "kenapa pembayaran tertentu tidak dapat dipilih"
+
+                PROMO examples:
+                - "promo apa yang tersedia?"
+                - "kenapa voucher ini tidak bisa dipakai?"
+                - "diskon untuk produk ini apa saja?"
+
                 Task:
-                - Read the user input (in English or Indonesian).
-                - Decide:
-                  - domain: one of ["PAYMENT","SHIPPING","PROMO","FRAUD","GENERAL"]
-                  - action: short snake_case action name if applicable (e.g. "check_order_status","check_payment_rule","small_talk","help","unknown")
-                  - language: "english" or "indonesia"
+                - Read the user input (Indonesian or English).
+                - Decide the best domain: "PAYMENT", "PROMO", or "GENERAL".
+                - Optionally guess language: "indonesia" or "english".
 
                 Rules:
                 - ALWAYS respond ONLY with a single JSON object.
-                - Do NOT include markdown, explanations, or extra text.
-                - Example valid responses:
-                  {"domain":"PAYMENT","action":"check_order_status","language":"indonesia"}
-                  {"domain":"PROMO","action":"help","language":"english"}
-                  {"domain":"GENERAL","action":"small_talk","language":"indonesia"}
-
-                Now analyze the user input and respond with JSON only.
+                - JSON must match this shape:
+                  {
+                    "domain": "PAYMENT" | "PROMO" | "GENERAL",
+                    "language": "indonesia" | "english"
+                  }
+                - If you're not sure, use "GENERAL" as domain.
                 """)
+            .outputSchema(ROUTER_OUTPUT_SCHEMA)
+            // Optional: if you want to store it in state, you can also call:
+            // .outputKey("router_result")
             .build();
 
     this.routerRunner = new InMemoryRunner(routerAgent);
   }
 
+  /** Called by ChatOrchestratorService with (userId, prompt). */
   public IntentClassification classifyIntent(String userId, String prompt) {
     try {
       RunConfig runConfig = RunConfig.builder().build();
@@ -102,7 +145,6 @@ public class RouterAgentFactory {
       Flowable<Event> events =
           routerRunner.runAsync(session.userId(), session.id(), userMsg, runConfig);
 
-      // Collect final response text
       String json = events
           .filter(Event::finalResponse)
           .map(Event::stringifyContent)
@@ -113,10 +155,12 @@ public class RouterAgentFactory {
       RouterResult routerResult = objectMapper.readValue(json, RouterResult.class);
 
       IntentDomain domain = mapDomain(routerResult.getDomain());
-      return new IntentClassification(domain, routerResult.getAction(), routerResult.getLanguage());
+      String language = normalizeLanguage(routerResult.getLanguage());
+
+      return new IntentClassification(domain, language);
     } catch (Exception e) {
       log.error("Failed to classify intent with RouterAgent, fallback to GENERAL. Error: {}", e.getMessage(), e);
-      return new IntentClassification(IntentDomain.GENERAL, "unknown", "indonesia");
+      return new IntentClassification(IntentDomain.GENERAL, "indonesia");
     }
   }
 
@@ -126,10 +170,22 @@ public class RouterAgentFactory {
     }
     return switch (rawDomain.toUpperCase()) {
       case "PAYMENT" -> IntentDomain.PAYMENT;
-      case "SHIPPING" -> IntentDomain.SHIPPING;
       case "PROMO" -> IntentDomain.PROMO;
-      case "FRAUD" -> IntentDomain.FRAUD;
       default -> IntentDomain.GENERAL;
     };
+  }
+
+  private String normalizeLanguage(String raw) {
+    if (raw == null) {
+      return "indonesia"; // your preferred default
+    }
+    String lower = raw.toLowerCase();
+    if (lower.startsWith("eng")) {
+      return "english";
+    }
+    if (lower.startsWith("indo")) {
+      return "indonesia";
+    }
+    return "indonesia";
   }
 }

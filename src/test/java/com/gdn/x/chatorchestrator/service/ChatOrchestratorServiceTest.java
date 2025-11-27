@@ -11,14 +11,15 @@ import org.junit.jupiter.api.Test;
 import java.util.Collections;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 class ChatOrchestratorServiceTest {
 
   @Test
   void handleUserMessage_routesToPaymentForPaymentIntent() {
-
     PaymentAgentFactory paymentAgentFactory = mock(PaymentAgentFactory.class);
     RouterAgentFactory routerAgentFactory = mock(RouterAgentFactory.class);
     ChatCommandExecutor executor = mock(ChatCommandExecutor.class);
@@ -33,11 +34,10 @@ class ChatOrchestratorServiceTest {
 
     when(userContextService.getCurrentUserContext()).thenReturn(ctx);
 
-    // Mock classifyIntent returning PAYMENT
+    // Mock classifyIntent returning PAYMENT domain + indonesia language
     RouterAgentFactory.IntentClassification paymentIntent =
         new RouterAgentFactory.IntentClassification(
             RouterAgentFactory.IntentDomain.PAYMENT,
-            "check_order_status",
             "indonesia"
         );
 

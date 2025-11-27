@@ -24,18 +24,18 @@ public class ChatOrchestratorService {
   public ChatResult handleUserMessage(String message) {
     UserContext ctx = userContextService.getCurrentUserContext();
 
-    // 🔹 Call RouterAgent and get full classification (domain + action + language)
     RouterAgentFactory.IntentClassification classification =
         routerAgentFactory.classifyIntent(ctx.getUserId(), message);
 
     RouterAgentFactory.IntentDomain domain = classification.getDomain();
+    String language = classification.getLanguage(); // for future use
 
-    log.info("RouterAgent classified intent={} (action={}, lang={}) for userId={}",
-        domain, classification.getAction(), classification.getLanguage(), ctx.getUserId());
+    log.info("RouterAgent classified intent={} language={} for userId={}",
+        domain, language, ctx.getUserId());
 
     return switch (domain) {
-      case PAYMENT -> handlePayment(message, ctx /* later you can also pass classification */);
-      case SHIPPING, PROMO, FRAUD, GENERAL -> handleNotImplemented(message, ctx, domain);
+      case PAYMENT -> handlePayment(message, ctx);
+      case PROMO, GENERAL -> handleNotImplemented(message, ctx, domain);
     };
   }
 
