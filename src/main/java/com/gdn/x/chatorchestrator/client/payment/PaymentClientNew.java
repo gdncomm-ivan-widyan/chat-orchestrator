@@ -16,7 +16,7 @@ public class PaymentClientNew {
   private String baseUrl;
 
   public PaymentOrderStatusResponse checkOrderStatus(String orderId) {
-    // TODO adjust to your actual payment assistant endpoint
+    // TODO adjust to payment assistant endpoint
     return restClient.get()
         .uri(baseUrl + "/internal-api/payment-assistant/orders/{orderId}", orderId)
         .retrieve()
@@ -24,7 +24,7 @@ public class PaymentClientNew {
   }
 
   public String checkPaymentRule(String merchant, String category, String product) {
-    // TODO adjust to your actual payment rule endpoint
+    // TODO adjust to payment rule endpoint
     return restClient.get()
         .uri(uriBuilder -> uriBuilder
             .path(baseUrl + "/internal-api/payment-assistant/payment-rules")

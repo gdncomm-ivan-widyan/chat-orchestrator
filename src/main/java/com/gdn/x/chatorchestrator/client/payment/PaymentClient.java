@@ -4,9 +4,5 @@ import com.gdn.x.chatorchestrator.client.payment.model.PaymentAiAssistantRespons
 
 public interface PaymentClient {
 
-  /**
-   * Delegate payment-related questions (e.g. "cek status order 2700...")
-   * to payment-service AI assistant.
-   */
   PaymentAiAssistantResponse processPrompt(String message);
 }

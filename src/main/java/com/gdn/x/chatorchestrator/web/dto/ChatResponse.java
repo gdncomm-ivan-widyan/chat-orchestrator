@@ -1,4 +1,3 @@
-// src/main/java/com/gdn/x/chatorchestrator/web/dto/ChatResponse.java
 package com.gdn.x.chatorchestrator.web.dto;
 
 import lombok.AllArgsConstructor;

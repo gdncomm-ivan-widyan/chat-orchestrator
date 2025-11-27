@@ -2,8 +2,6 @@ package com.gdn.x.chatorchestrator.service;
 
 import com.gdn.x.chatorchestrator.agent.RouterAgentFactory;
 import com.gdn.x.chatorchestrator.client.payment.PaymentClient;
-import com.gdn.x.chatorchestrator.client.payment.model.PaymentAiAssistantResponse;
-import com.gdn.x.chatorchestrator.client.payment.model.PaymentAiAssistantValue;
 import com.gdn.x.chatorchestrator.command.ChatCommandExecutor;
 import com.gdn.x.chatorchestrator.command.ChatResult;
 import com.gdn.x.chatorchestrator.context.UserContext;
@@ -13,8 +11,12 @@ import org.junit.jupiter.api.Test;
 import java.util.Collections;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 class ChatOrchestratorServiceTest {
 
@@ -40,8 +42,6 @@ class ChatOrchestratorServiceTest {
     when(routerAgentFactory.classifyIntent(eq("user-1"), anyString()))
         .thenReturn(paymentIntent);
 
-    // optional: instead of mocking executor, you can spy the real PaymentChatCommand,
-    // but simplest is to mock executor behaviour directly
     ChatResult fakeResult = ChatResult.builder()
         .message("Hello from payment")
         .userEmail("user@example.com")

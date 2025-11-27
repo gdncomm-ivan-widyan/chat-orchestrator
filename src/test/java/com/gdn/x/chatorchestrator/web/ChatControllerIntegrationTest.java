@@ -34,14 +34,12 @@ class ChatControllerIntegrationTest {
 
   @BeforeEach
   void setup() {
-    // Force router to classify as PAYMENT so we hit the PaymentChatCommand path
     when(routerAgentFactory.classifyIntent(anyString(), anyString()))
         .thenReturn(new RouterAgentFactory.IntentClassification(
             RouterAgentFactory.IntentDomain.PAYMENT,
             "indonesia"
         ));
 
-    // Stub payment-service AI assistant endpoint
     stubFor(post(urlPathEqualTo("/x-payment3/api/ai-assistant/prompt"))
         .willReturn(okJson("""
             {

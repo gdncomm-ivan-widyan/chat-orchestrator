@@ -22,7 +22,6 @@ public class PaymentChatCommand implements ChatCommand {
   public ChatResult execute() {
     PaymentAiAssistantResponse resp = paymentClient.processPrompt(prompt);
 
-    // Fallback message if something is wrong
     String message = Optional.ofNullable(resp)
         .map(PaymentAiAssistantResponse::getValue)
         .map(PaymentAiAssistantValue::getMessage)

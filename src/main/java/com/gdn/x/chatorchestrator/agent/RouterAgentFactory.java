@@ -29,14 +29,6 @@ public class RouterAgentFactory {
     GENERAL
   }
 
-  /**
-   * This describes the JSON we expect from the router LLM:
-   *
-   * {
-   *   "domain": "PAYMENT" | "PROMO" | "GENERAL",
-   *   "language": "indonesia" | "english" | null
-   * }
-   */
   private static final Schema ROUTER_OUTPUT_SCHEMA =
       Schema.builder()
           .type("OBJECT")
@@ -123,14 +115,13 @@ public class RouterAgentFactory {
                 - If you're not sure, use "GENERAL" as domain.
                 """)
             .outputSchema(ROUTER_OUTPUT_SCHEMA)
-            // Optional: if you want to store it in state, you can also call:
+            // Optional: to store it in state, you can also call:
             // .outputKey("router_result")
             .build();
 
     this.routerRunner = new InMemoryRunner(routerAgent);
   }
 
-  /** Called by ChatOrchestratorService with (userId, prompt). */
   public IntentClassification classifyIntent(String userId, String prompt) {
     try {
       RunConfig runConfig = RunConfig.builder().build();
@@ -177,14 +168,11 @@ public class RouterAgentFactory {
 
   private String normalizeLanguage(String raw) {
     if (raw == null) {
-      return "indonesia"; // your preferred default
+      return "indonesia"; // preferred default
     }
     String lower = raw.toLowerCase();
     if (lower.startsWith("eng")) {
       return "english";
-    }
-    if (lower.startsWith("indo")) {
-      return "indonesia";
     }
     return "indonesia";
   }

@@ -15,15 +15,10 @@ public class PaymentAgentFactory {
 
   private final PaymentClient paymentClient;
 
-  // Single constructor for Spring to use (constructor injection)
   public PaymentAgentFactory(PaymentClient paymentClient) {
     this.paymentClient = paymentClient;
   }
 
-  /**
-   * Root payment agent for payment-related intents.
-   * This agent has tools that call your payment backend via PaymentClient.
-   */
   public BaseAgent buildPaymentAgent() {
     return LlmAgent.builder()
         .name("payment-assistant-agent")
@@ -41,7 +36,6 @@ public class PaymentAgentFactory {
             Always respond in a friendly, concise style, and never expose internal error codes.
             """)
         .tools(
-            // Bind tools to *this* Spring bean instance
             FunctionTool.create(this, "getOrderStatus"),
             FunctionTool.create(this, "getPaymentRuleDetails")
         )
