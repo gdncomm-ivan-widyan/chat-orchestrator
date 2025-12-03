@@ -1,5 +1,6 @@
 package com.gdn.x.chatorchestrator.service;
 
+import com.gdn.x.chatorchestrator.agent.PaymentAgentFactory;
 import com.gdn.x.chatorchestrator.agent.RouterAgentFactory;
 import com.gdn.x.chatorchestrator.client.payment.PaymentClient;
 import com.gdn.x.chatorchestrator.command.ChatCommandExecutor;
@@ -7,6 +8,8 @@ import com.gdn.x.chatorchestrator.command.ChatResult;
 import com.gdn.x.chatorchestrator.command.payment.PaymentChatCommand;
 import com.gdn.x.chatorchestrator.context.UserContext;
 import com.gdn.x.chatorchestrator.context.UserContextService;
+import com.gdn.x.chatorchestrator.service.payment.PaymentOrderStatusHandler;
+import com.gdn.x.chatorchestrator.service.payment.PaymentRuleHandler;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -16,10 +19,14 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class ChatOrchestratorService {
 
-  private final PaymentClient paymentClient;
+  private final PaymentClient paymentClient; // still injected for future use if needed
   private final RouterAgentFactory routerAgentFactory;
   private final ChatCommandExecutor commandExecutor;
   private final UserContextService userContextService;
+
+  private final PaymentAgentFactory paymentAgentFactory;
+  private final PaymentOrderStatusHandler paymentOrderStatusHandler;
+  private final PaymentRuleHandler paymentRuleHandler;
 
   public ChatResult handleUserMessage(String message) {
     UserContext ctx = userContextService.getCurrentUserContext();
@@ -38,11 +45,13 @@ public class ChatOrchestratorService {
   }
 
   private ChatResult handlePayment(String message, UserContext ctx) {
+    // New DI-based PaymentChatCommand
     PaymentChatCommand cmd = new PaymentChatCommand(
-        paymentClient,
         message,
-        ctx.getEmail(),
-        ctx.getUserId()
+        userContextService,
+        paymentAgentFactory,
+        paymentOrderStatusHandler,
+        paymentRuleHandler
     );
     return commandExecutor.execute(cmd);
   }

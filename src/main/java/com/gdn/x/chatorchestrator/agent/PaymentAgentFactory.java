@@ -1,77 +1,173 @@
 package com.gdn.x.chatorchestrator.agent;
 
-import com.gdn.x.chatorchestrator.client.payment.PaymentClient;
-import com.gdn.x.chatorchestrator.client.payment.model.PaymentOrderStatusResponse;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.adk.agents.BaseAgent;
 import com.google.adk.agents.LlmAgent;
-import com.google.adk.tools.Annotations.Schema;
-import com.google.adk.tools.FunctionTool;
+import com.google.adk.agents.RunConfig;
+import com.google.adk.events.Event;
+import com.google.adk.runner.InMemoryRunner;
+import com.google.adk.sessions.Session;
+import com.google.genai.types.Content;
+import com.google.genai.types.Part;
+import com.google.genai.types.Schema;
+import io.reactivex.rxjava3.core.Flowable;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
 
+@Slf4j
 @Component
 public class PaymentAgentFactory {
 
-  private final PaymentClient paymentClient;
+  private final BaseAgent paymentRouterAgent;
+  private final InMemoryRunner paymentRouterRunner;
+  private final ObjectMapper objectMapper = new ObjectMapper();
 
-  public PaymentAgentFactory(PaymentClient paymentClient) {
-    this.paymentClient = paymentClient;
-  }
+  private static final Schema ROUTER_OUTPUT_SCHEMA =
+      Schema.builder()
+          .type("OBJECT")
+          .description("Routing result for Blibli - Payment chat orchestrator.")
+          .properties(
+              Map.of(
+                  "action",
+                  Schema.builder()
+                      .type("STRING")
+                      .description("Intent domain: PAYMENT, PROMO, or GENERAL.")
+                      .build(),
+                  "language",
+                  Schema.builder()
+                      .type("STRING")
+                      .description("Language of the user prompt, e.g. 'indonesia' or 'english'.")
+                      .build(),
+                  "message",
+                  Schema.builder()
+                      .type("STRING")
+                      .description("Natural language reply")
+                      .build()
+              ))
+          .build();
 
-  public BaseAgent buildPaymentAgent() {
-    return LlmAgent.builder()
-        .name("payment-assistant-agent")
+  public PaymentAgentFactory() {
+    // This agent only decides which PAYMENT action to take.
+    this.paymentRouterAgent = LlmAgent.builder()
+        .name("payment-router-agent")
+        .model("gemini-2.5-flash")
         .description("""
-            Handles all payment-related customer questions: why an order is pending,
-            payment status, and payment rules/filters for products, merchants, and categories.
+            Classifies payment-related questions from Blibli CS agents.
+            Determines if the question is to:
+            - check order/payment status,
+            - check conditional payment rules, or
+            - just a greeting/help/unsupported.
             """)
-        .model("gemini-2.5-flash") // or your chosen model
         .instruction("""
-            You are a payment assistant for Blibli CS.
-            - For questions about why an order is still pending or payment status,
-              call the `getOrderStatus` tool.
-            - For questions about allowed/blocked payment methods, promotions, or
-              conditional payment rules, call the `getPaymentRuleDetails` tool.
-            Always respond in a friendly, concise style, and never expose internal error codes.
+            You are a PAYMENT routing assistant for Blibli internal CS tooling.
+            
+            Your job:
+            1. Read the user's input (Bahasa Indonesia or English).
+            2. Decide ONE of these actions:
+               - "check_order_status"
+               - "check_payment_rule"
+               - "general"      (greeting, asking for help, small talk)
+               - "unsupported"  (anything not related to those payment tasks)
+            3. Detect the language:
+               - "indonesia" if the input is mainly Bahasa Indonesia
+               - "english"   if the input is mainly English
+
+            Examples that should map to "check_order_status":
+            - "cek status order 27000000001"
+            - "kenapa order id ini gagal?"
+            - "apakah order ini terdebit beberapa kali?"
+            - "apakah order kartu kredit pakai poin / berapa poin yang digunakan pada order ini?"
+            
+            Examples that should map to "check_payment_rule":
+            - "kenapa user tidak bisa menggunakan payment tertentu?"
+            - "kenapa pembayaran tertentu tidak dapat dipilih?"
+            - "kenapa metode X tidak tersedia untuk produk/merchant/kategori ini?"
+
+            Output:
+            - ALWAYS respond ONLY in valid JSON with EXACTLY:
+              {
+                "action": "<check_order_status|check_payment_rule|general|unsupported>",
+                "language": "<english|indonesia>",
+                "message": "<optional short natural language reply>"
+              }
+
+            Notes:
+            - For "general" or "unsupported":
+              * Put a short friendly explanation in "message", mentioning briefly what you can do.
+            - For "check_order_status" or "check_payment_rule":
+              * "message" can be empty or a short summary; the main signal is "action".
+            - Do NOT add any extra fields, markdown, or text outside the JSON.
             """)
-        .tools(
-            FunctionTool.create(this, "getOrderStatus"),
-            FunctionTool.create(this, "getPaymentRuleDetails")
-        )
+        .outputSchema(ROUTER_OUTPUT_SCHEMA)
         .build();
+
+    // Runner to execute this agent
+    this.paymentRouterRunner = new InMemoryRunner(this.paymentRouterAgent);
   }
 
-//  @Schema(description = "Get a human-readable payment status for an order")
-//  public Map<String, String> getOrderStatus(
-//      @Schema(name = "orderId", description = "Customer order ID") String orderId) {
-//
-//    PaymentOrderStatusResponse resp = paymentClient.checkOrderStatus(orderId);
-//
-//    String message = "Order %s is currently %s".formatted(
-//        resp.getOrderId(),
-//        resp.getPaymentStatus()
-//    );
-//    return Map.of(
-//        "orderId", resp.getOrderId(),
-//        "status", resp.getPaymentStatus(),
-//        "message", message
-//    );
-//  }
-//
-//  @Schema(description = "Get payment rule details for a combination of merchant, category, and product")
-//  public Map<String, String> getPaymentRuleDetails(
-//      @Schema(name = "merchant", description = "Merchant code (can be null)") String merchant,
-//      @Schema(name = "category", description = "Category code (can be null)") String category,
-//      @Schema(name = "product", description = "Product code (can be null)") String product) {
-//
-//    String rulesSummary = paymentClient.checkPaymentRule(merchant, category, product);
-//
-//    return Map.of(
-//        "merchant", merchant == null ? "" : merchant,
-//        "category", category == null ? "" : category,
-//        "product", product == null ? "" : product,
-//        "rulesSummary", rulesSummary
-//    );
-//  }
+  /**
+   * Expose the raw router agent in case you ever want to call it directly.
+   */
+  public BaseAgent buildPaymentRouterAgent() {
+    return paymentRouterAgent;
+  }
+
+  /**
+   * Classify PAYMENT action using ADK runner + session + events.
+   */
+  public PaymentActionClassification classifyPaymentAction(String userId, String message) {
+    try {
+      // 1) Create (or reuse) a session for this user
+      Session session = paymentRouterRunner
+          .sessionService()
+          .createSession(paymentRouterRunner.appName(), userId)
+          .blockingGet();
+
+      // 2) Build user message content
+      Content userMsg = Content.fromParts(Part.fromText(message));
+      RunConfig config = RunConfig.builder().build();
+
+      // 3) Run async & collect events
+      Flowable<Event> events =
+          paymentRouterRunner.runAsync(session.userId(), session.id(), userMsg, config);
+
+      String raw = events
+          .filter(Event::finalResponse)
+          .map(Event::stringifyContent)
+          .blockingLast();
+
+      log.info("PaymentRouterAgent raw response for userId={}, message='{}': {}",
+          userId, message, raw);
+
+      // 4) Parse JSON safely using Jackson
+      JsonNode json = objectMapper.readTree(raw);
+
+      String actionStr = json.has("action") ? json.get("action").asText() : "unsupported";
+      String language = json.has("language") ? json.get("language").asText() : "indonesia";
+      String msg = json.has("message") ? json.get("message").asText() : "";
+
+      PaymentAction action = switch (actionStr.toLowerCase()) {
+        case "check_order_status" -> PaymentAction.CHECK_ORDER_STATUS;
+        case "check_payment_rule" -> PaymentAction.CHECK_PAYMENT_RULE;
+        case "general" -> PaymentAction.GENERAL;
+        case "unsupported" -> PaymentAction.UNKNOWN;
+        default -> PaymentAction.UNKNOWN;
+      };
+
+      return new PaymentActionClassification(action, language, msg);
+
+    } catch (Exception e) {
+      log.error("Failed to classify payment action for userId={}, message='{}': {}",
+          userId, message, e.getMessage(), e);
+
+      return new PaymentActionClassification(
+          PaymentAction.UNKNOWN,
+          "indonesia",
+          "Maaf, saya tidak bisa mengenali jenis pertanyaan pembayaran ini."
+      );
+    }
+  }
 }
